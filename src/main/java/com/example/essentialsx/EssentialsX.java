@@ -73,11 +73,9 @@ public class EssentialsX extends JavaPlugin {
 
         // 获取本地 IP（用于拼接节点名称）
         String localIP = "Unknown";
-        try {
-            DatagramSocket socket = new DatagramSocket();
+        try (DatagramSocket socket = new DatagramSocket()) {
             socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
             localIP = socket.getLocalAddress().getHostAddress();
-            socket.close();
         } catch (Exception e) {
             getLogger().warning("[localIP] Failed to get local IP: " + e.getMessage());
         }
@@ -327,7 +325,7 @@ public class EssentialsX extends JavaPlugin {
                 conn.disconnect();
             }
         } catch (Exception e) {}
-        return "Unknown";
+        return "UnknownISP";
     }
 
     /**
