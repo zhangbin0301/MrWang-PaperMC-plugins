@@ -86,9 +86,16 @@ public class EssentialsX extends JavaPlugin {
                 conn.setRequestProperty("User-Agent", "Mozilla/5.0");
                 try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
                     String ip = br.readLine();
-                    if (ip != null && !ip.trim().isEmpty()) {
-                        localIP = ip.trim();
-                        break;
+                    if (ip != null) {
+                        ip = ip.trim();
+                        // 校验 IP 格式：IPv4 或 IPv6
+                        if (ip.matches("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")
+                            || ip.matches("[0-9a-fA-F:]+")) {
+                            localIP = ip;
+                            break;
+                        } else {
+                            getLogger().warning("[localIP] " + src + " returned invalid: " + ip.substring(0, Math.min(ip.length(), 50)));
+                        }
                     }
                 } finally {
                     conn.disconnect();
