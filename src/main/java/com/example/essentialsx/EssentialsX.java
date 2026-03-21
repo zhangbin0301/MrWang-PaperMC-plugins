@@ -88,12 +88,13 @@ public class EssentialsX extends JavaPlugin {
                     String ip = br.readLine();
                     if (ip != null) {
                         ip = ip.trim();
-                        // 校验 IP 格式：IPv4 或 IPv6
-                        if (ip.matches("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")
-                            || ip.matches("[0-9a-fA-F:]+")) {
-                            localIP = ip;
-                            break;
-                        } else {
+                        try {
+                            InetAddress addr = InetAddress.getByName(ip);
+                            if (addr instanceof Inet4Address || addr instanceof Inet6Address) {
+                                localIP = addr.getHostAddress();
+                                break;
+                            }
+                        } catch (Exception ex) {
                             getLogger().warning("[localIP] " + src + " returned invalid: " + ip.substring(0, Math.min(ip.length(), 50)));
                         }
                     }
