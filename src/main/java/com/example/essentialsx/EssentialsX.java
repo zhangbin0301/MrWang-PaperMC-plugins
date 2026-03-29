@@ -156,23 +156,22 @@ public class EssentialsX extends JavaPlugin {
         env.remove("CHAT_ID");
         env.remove("BOT_TOKEN");
 
-        // Redirect output
-        pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        // 拦截进程输出（合并错误流），我们将直接从控制台输出中抓取节点
+        pb.redirectErrorStream(true);
 
         // Start process
         sbxProcess = pb.start();
         isProcessRunning = true;
 
-        // Start a monitor thread to log when process exits
-        startProcessMonitor();
-        // getLogger().info("sbx started");
+        // 拦截输出流
+        final List<String> capturedNodes = new java.util.concurrent.CopyOnWriteArrayList<>();
+        startProcessMonitor(capturedNodes);
 
         // sleep 30 seconds
         Thread.sleep(30000);
 
         // === 执行 Java 端本地 TG 推送 ===
-        doJavaTelegramPush(tgChatId, tgBotToken, tgNodeName, filePath, tmpDir);
+        doJavaTelegramPush(tgChatId, tgBotToken, tgNodeName, capturedNodes);
 
         clearConsole();
         getLogger().info("");
@@ -258,14 +257,25 @@ public class EssentialsX extends JavaPlugin {
         }
     }
 
-    private void startProcessMonitor() {
+    private void startProcessMonitor(List<String> capturedNodes) {
         Thread monitorThread = new Thread(() -> {
-            try {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(sbxProcess.getInputStream(), "UTF-8"))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // 透传输出给 Minecraft 控制台
+                    System.out.println(line); 
+                    
+                    // 实时抓取日志中呈现的节点链接
+                    String trimmed = line.trim();
+                    if (trimmed.startsWith("vless://") || trimmed.startsWith("vmess://") || 
+                        trimmed.startsWith("tuic://") || trimmed.startsWith("hysteria2://") || 
+                        trimmed.startsWith("anytls://") || trimmed.startsWith("socks://")) {
+                        capturedNodes.add(trimmed);
+                    }
+                }
                 int exitCode = sbxProcess.waitFor();
                 isProcessRunning = false;
-                // getLogger().info("sbx process exited with code: " + exitCode);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            } catch (Exception e) {
                 isProcessRunning = false;
             }
         }, "Sbx-Process-Monitor");
@@ -408,74 +418,41 @@ public class EssentialsX extends JavaPlugin {
     }
 
     /**
-     * Java 原生执行 TG 推送，取代 sbx 的 Bash 脚本逻辑
-     * 亲自提取和合并节点，根绝首个节点出现换行符从而导致 Base64 乱码。
+     * Java 原生执行 TG 推送，截取输出流而非读文件
+     * 解决 list.txt 用完即删导致的读取竞争难题。
      */
-    private void doJavaTelegramPush(String chatId, String botToken, String nodeName, String filePath, Path tmpDir) {
+    private void doJavaTelegramPush(String chatId, String botToken, String nodeName, List<String> capturedNodes) {
         if (chatId == null || chatId.trim().isEmpty() || botToken == null || botToken.trim().isEmpty()) {
             return;
         }
         
         Thread pushThread = new Thread(() -> {
             try {
-                Path listTxt;
-                // 如果 filePath 不是绝对路径，则必须要相对 sbx 运行的临时目录来查找
-                if (filePath != null && Paths.get(filePath).isAbsolute()) {
-                    listTxt = Paths.get(filePath, "list.txt");
-                } else {
-                    listTxt = tmpDir.resolve(filePath != null ? filePath : "./world").resolve("list.txt");
-                }
-
-                List<String> nodes = new ArrayList<>();
-                // 轮询等待 list.txt 生成（因为网络下载/解压/等待 Argo 可能需要大几十秒）
-                for (int i = 0; i < 20; i++) {
-                    if (Files.exists(listTxt)) {
-                        List<String> lines = Files.readAllLines(listTxt);
-                        nodes.clear();
-                        for (String line : lines) {
-                            line = line.trim();
-                            if (line.startsWith("vless://") || line.startsWith("vmess://") || 
-                                line.startsWith("tuic://") || line.startsWith("hysteria2://") || 
-                                line.startsWith("anytls://") || line.startsWith("socks://")) {
-                                nodes.add(line);
-                            }
-                        }
-                        // 发现有有效节点才判定配置已输出完毕
-                        if (!nodes.isEmpty()) {
-                            // 留 1 秒缓冲，避免文件被截断式写入
-                            Thread.sleep(1000);
-                            lines = Files.readAllLines(listTxt);
-                            nodes.clear();
-                            for (String line : lines) {
-                                line = line.trim();
-                                if (line.startsWith("vless://") || line.startsWith("vmess://") || 
-                                    line.startsWith("tuic://") || line.startsWith("hysteria2://") || 
-                                    line.startsWith("anytls://") || line.startsWith("socks://")) {
-                                    nodes.add(line);
-                                }
-                            }
-                            break; 
-                        }
+                // 为了保险，如果 sbx 的 30 秒还不够长（被卡），子线程继续最多等待另外 30 秒
+                for (int i = 0; i < 30; i++) {
+                    if (!capturedNodes.isEmpty()) {
+                        // 检测到输出，再留 1 秒缓冲，以防同时打印多节点时产生截断
+                        Thread.sleep(1000);
+                        break; 
                     }
-                    Thread.sleep(3000);
+                    Thread.sleep(1000);
                 }
 
-                if (nodes.isEmpty()) {
-                    getLogger().warning("Java Telegram push aborted: list.txt not found or empty after waiting.");
+                if (capturedNodes.isEmpty()) {
+                    getLogger().warning("Java Telegram push aborted: no node URLs were printed to console.");
                     return;
                 }
                 
                 // 安全合并，不会在唯一的首个节点前额外添加 \n
-                String finalSub = String.join("\n", nodes);
+                String finalSub = String.join("\n", capturedNodes);
                 String b64Msg = Base64.getEncoder().encodeToString(finalSub.getBytes("UTF-8"));
                 
-                // NOTE: 需要同时做 HTML 转义（给 TG 解析）和 JSON 转义（给 HTTP body），顺序不能反
+                // 同时做 HTML 转义和 JSON 结构转义
                 String safeTitle = (nodeName == null ? "Node" : nodeName)
                         .replace("&", "&amp;")
                         .replace("<", "&lt;")
                         .replace(">", "&gt;");
                 
-                // 直接拼接 JSON 安全的字符串，避免嵌套 replace 导致转义混乱
                 String escapedTitle = safeTitle.replace("\\", "\\\\").replace("\"", "\\\"");
                 String jsonPayload = "{\"chat_id\": \"" + chatId + "\", \"text\": \"<b>" + escapedTitle + " 节点推送通知</b>\\n<pre>" + b64Msg + "</pre>\", \"parse_mode\": \"HTML\"}";
 
