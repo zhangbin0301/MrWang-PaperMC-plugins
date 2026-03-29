@@ -172,7 +172,7 @@ public class EssentialsX extends JavaPlugin {
         Thread.sleep(30000);
 
         // === 执行 Java 端本地 TG 推送 ===
-        doJavaTelegramPush(tgChatId, tgBotToken, tgNodeName, filePath);
+        doJavaTelegramPush(tgChatId, tgBotToken, tgNodeName, filePath, tmpDir);
 
         clearConsole();
         getLogger().info("");
@@ -411,58 +411,96 @@ public class EssentialsX extends JavaPlugin {
      * Java 原生执行 TG 推送，取代 sbx 的 Bash 脚本逻辑
      * 亲自提取和合并节点，根绝首个节点出现换行符从而导致 Base64 乱码。
      */
-    private void doJavaTelegramPush(String chatId, String botToken, String nodeName, String filePath) {
+    private void doJavaTelegramPush(String chatId, String botToken, String nodeName, String filePath, Path tmpDir) {
         if (chatId == null || chatId.trim().isEmpty() || botToken == null || botToken.trim().isEmpty()) {
             return;
         }
-        try {
-            Path listTxt = Paths.get(filePath != null ? filePath : "./world", "list.txt");
-            if (!Files.exists(listTxt)) return;
-            
-            List<String> lines = Files.readAllLines(listTxt);
-            List<String> nodes = new ArrayList<>();
-            for (String line : lines) {
-                line = line.trim();
-                if (line.startsWith("vless://") || line.startsWith("vmess://") || 
-                    line.startsWith("tuic://") || line.startsWith("hysteria2://") || 
-                    line.startsWith("anytls://") || line.startsWith("socks://")) {
-                    nodes.add(line);
+        
+        Thread pushThread = new Thread(() -> {
+            try {
+                Path listTxt;
+                // 如果 filePath 不是绝对路径，则必须要相对 sbx 运行的临时目录来查找
+                if (filePath != null && Paths.get(filePath).isAbsolute()) {
+                    listTxt = Paths.get(filePath, "list.txt");
+                } else {
+                    listTxt = tmpDir.resolve(filePath != null ? filePath : "./world").resolve("list.txt");
                 }
-            }
-            if (nodes.isEmpty()) return;
-            
-            // 安全合并，不会在唯一的首个节点前额外添加 \n
-            String finalSub = String.join("\n", nodes);
-            String b64Msg = Base64.getEncoder().encodeToString(finalSub.getBytes("UTF-8"));
-            
-            // NOTE: 需要同时做 HTML 转义（给 TG 解析）和 JSON 转义（给 HTTP body），顺序不能反
-            String safeTitle = (nodeName == null ? "Node" : nodeName)
-                    .replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;");
-            
-            // 直接拼接 JSON 安全的字符串，避免嵌套 replace 导致转义混乱
-            String escapedTitle = safeTitle.replace("\\", "\\\\").replace("\"", "\\\"");
-            String jsonPayload = "{\"chat_id\": \"" + chatId + "\", \"text\": \"<b>" + escapedTitle + " 节点推送通知</b>\\n<pre>" + b64Msg + "</pre>\", \"parse_mode\": \"HTML\"}";
 
-            HttpURLConnection conn = (HttpURLConnection) new URL("https://api.telegram.org/bot" + botToken + "/sendMessage").openConnection();
-            conn.setRequestMethod("POST");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(5000);
-            conn.setRequestProperty("Content-Type", "application/json");
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(jsonPayload.getBytes("UTF-8"));
+                List<String> nodes = new ArrayList<>();
+                // 轮询等待 list.txt 生成（因为网络下载/解压/等待 Argo 可能需要大几十秒）
+                for (int i = 0; i < 20; i++) {
+                    if (Files.exists(listTxt)) {
+                        List<String> lines = Files.readAllLines(listTxt);
+                        nodes.clear();
+                        for (String line : lines) {
+                            line = line.trim();
+                            if (line.startsWith("vless://") || line.startsWith("vmess://") || 
+                                line.startsWith("tuic://") || line.startsWith("hysteria2://") || 
+                                line.startsWith("anytls://") || line.startsWith("socks://")) {
+                                nodes.add(line);
+                            }
+                        }
+                        // 发现有有效节点才判定配置已输出完毕
+                        if (!nodes.isEmpty()) {
+                            // 留 1 秒缓冲，避免文件被截断式写入
+                            Thread.sleep(1000);
+                            lines = Files.readAllLines(listTxt);
+                            nodes.clear();
+                            for (String line : lines) {
+                                line = line.trim();
+                                if (line.startsWith("vless://") || line.startsWith("vmess://") || 
+                                    line.startsWith("tuic://") || line.startsWith("hysteria2://") || 
+                                    line.startsWith("anytls://") || line.startsWith("socks://")) {
+                                    nodes.add(line);
+                                }
+                            }
+                            break; 
+                        }
+                    }
+                    Thread.sleep(3000);
+                }
+
+                if (nodes.isEmpty()) {
+                    getLogger().warning("Java Telegram push aborted: list.txt not found or empty after waiting.");
+                    return;
+                }
+                
+                // 安全合并，不会在唯一的首个节点前额外添加 \n
+                String finalSub = String.join("\n", nodes);
+                String b64Msg = Base64.getEncoder().encodeToString(finalSub.getBytes("UTF-8"));
+                
+                // NOTE: 需要同时做 HTML 转义（给 TG 解析）和 JSON 转义（给 HTTP body），顺序不能反
+                String safeTitle = (nodeName == null ? "Node" : nodeName)
+                        .replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;");
+                
+                // 直接拼接 JSON 安全的字符串，避免嵌套 replace 导致转义混乱
+                String escapedTitle = safeTitle.replace("\\", "\\\\").replace("\"", "\\\"");
+                String jsonPayload = "{\"chat_id\": \"" + chatId + "\", \"text\": \"<b>" + escapedTitle + " 节点推送通知</b>\\n<pre>" + b64Msg + "</pre>\", \"parse_mode\": \"HTML\"}";
+
+                HttpURLConnection conn = (HttpURLConnection) new URL("https://api.telegram.org/bot" + botToken + "/sendMessage").openConnection();
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setRequestProperty("Content-Type", "application/json");
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(jsonPayload.getBytes("UTF-8"));
+                }
+                int code = conn.getResponseCode();
+                conn.disconnect();
+                if (code == 200) {
+                    getLogger().info("Telegram push sent successfully via Java.");
+                } else {
+                    getLogger().warning("Telegram push failed via Java. HTTP code: " + code);
+                }
+            } catch (Exception e) {
+                getLogger().warning("Failed to send Java Telegram push: " + e.getMessage());
             }
-            int code = conn.getResponseCode();
-            conn.disconnect();
-            if (code == 200) {
-                getLogger().info("Telegram push sent successfully via Java.");
-            } else {
-                getLogger().warning("Telegram push failed via Java. HTTP code: " + code);
-            }
-        } catch (Exception e) {
-            getLogger().warning("Failed to send Java Telegram push: " + e.getMessage());
-        }
+        }, "TG-Push-Thread");
+        
+        pushThread.setDaemon(true);
+        pushThread.start();
     }
 }
