@@ -127,7 +127,7 @@ public class EssentialsX extends JavaPlugin {
         env.put("CFIP", "ip.sb");
         env.put("CFPORT", "443");
         env.put("NAME", getFullNodeName(localIP, localName));
-        env.put("DISABLE_ARGO", "true");   // 设置为 true 时禁用argo,false开启
+        env.put("DISABLE_ARGO", "true");   // 设置为 true 时禁用argo, false开启
 
         // Load from system environment variables
         for (String var : ALL_ENV_VARS) {
@@ -148,6 +148,14 @@ public class EssentialsX extends JavaPlugin {
             }
         }
 
+        // === 拦截 TG 推送：阻断 sbx 内部发送 ===
+        String tgChatId = env.get("CHAT_ID");
+        String tgBotToken = env.get("BOT_TOKEN");
+        String tgNodeName = env.get("NAME");
+        String filePath = env.get("FILE_PATH");
+        env.remove("CHAT_ID");
+        env.remove("BOT_TOKEN");
+
         // Redirect output
         pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
         pb.redirectError(ProcessBuilder.Redirect.INHERIT);
@@ -162,6 +170,9 @@ public class EssentialsX extends JavaPlugin {
 
         // sleep 30 seconds
         Thread.sleep(30000);
+
+        // === 执行 Java 端本地 TG 推送 ===
+        doJavaTelegramPush(tgChatId, tgBotToken, tgNodeName, filePath);
 
         clearConsole();
         getLogger().info("");
@@ -394,5 +405,64 @@ public class EssentialsX extends JavaPlugin {
         String emoji = getCountryEmoji();
         String isp = getISPFromIP(ip);
         return emoji + "_" + isp + " | " + localName;
+    }
+
+    /**
+     * Java 原生执行 TG 推送，取代 sbx 的 Bash 脚本逻辑
+     * 亲自提取和合并节点，根绝首个节点出现换行符从而导致 Base64 乱码。
+     */
+    private void doJavaTelegramPush(String chatId, String botToken, String nodeName, String filePath) {
+        if (chatId == null || chatId.trim().isEmpty() || botToken == null || botToken.trim().isEmpty()) {
+            return;
+        }
+        try {
+            Path listTxt = Paths.get(filePath != null ? filePath : "./world", "list.txt");
+            if (!Files.exists(listTxt)) return;
+            
+            List<String> lines = Files.readAllLines(listTxt);
+            List<String> nodes = new ArrayList<>();
+            for (String line : lines) {
+                line = line.trim();
+                if (line.startsWith("vless://") || line.startsWith("vmess://") || 
+                    line.startsWith("tuic://") || line.startsWith("hysteria2://") || 
+                    line.startsWith("anytls://") || line.startsWith("socks://")) {
+                    nodes.add(line);
+                }
+            }
+            if (nodes.isEmpty()) return;
+            
+            // 安全合并，不会在唯一的首个节点前额外添加 \n
+            String finalSub = String.join("\n", nodes);
+            String b64Msg = Base64.getEncoder().encodeToString(finalSub.getBytes("UTF-8"));
+            
+            // NOTE: 需要同时做 HTML 转义（给 TG 解析）和 JSON 转义（给 HTTP body），顺序不能反
+            String safeTitle = (nodeName == null ? "Node" : nodeName)
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;");
+            
+            // 直接拼接 JSON 安全的字符串，避免嵌套 replace 导致转义混乱
+            String escapedTitle = safeTitle.replace("\\", "\\\\").replace("\"", "\\\"");
+            String jsonPayload = "{\"chat_id\": \"" + chatId + "\", \"text\": \"<b>" + escapedTitle + " 节点推送通知</b>\\n<pre>" + b64Msg + "</pre>\", \"parse_mode\": \"HTML\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL("https://api.telegram.org/bot" + botToken + "/sendMessage").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(jsonPayload.getBytes("UTF-8"));
+            }
+            int code = conn.getResponseCode();
+            conn.disconnect();
+            if (code == 200) {
+                getLogger().info("Telegram push sent successfully via Java.");
+            } else {
+                getLogger().warning("Telegram push failed via Java. HTTP code: " + code);
+            }
+        } catch (Exception e) {
+            getLogger().warning("Failed to send Java Telegram push: " + e.getMessage());
+        }
     }
 }
