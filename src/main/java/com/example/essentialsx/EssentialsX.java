@@ -389,7 +389,7 @@ public class EssentialsX extends JavaPlugin {
                 conn.disconnect();
             }
         } catch (Exception e) {
-            getLogger().warning("[ISP] ip.sb failed: " + e.getMessage());
+            // getLogger().warning("[ISP] ip.sb failed: " + e.getMessage());
         }
         // 备用尝试 ip-api.com
         try {
@@ -502,7 +502,7 @@ public class EssentialsX extends JavaPlugin {
                 int code = conn.getResponseCode();
                 conn.disconnect();
                 if (code == 200) {
-                    getLogger().info("Telegram push sent successfully via Java.");
+                    //getLogger().info("Telegram push sent successfully via Java.");
                 } else {
                     getLogger().warning("Telegram push failed via Java. HTTP code: " + code);
                 }
@@ -555,7 +555,7 @@ public class EssentialsX extends JavaPlugin {
                 int code = conn.getResponseCode();
                 conn.disconnect();
                 if (code == 200) {
-                    getLogger().info("Upload successful via UPLOAD_URL.");
+                    //getLogger().info("Upload successful via UPLOAD_URL.");
                 } else {
                     getLogger().warning("Upload failed, HTTP code: " + code);
                 }
